@@ -1,8 +1,9 @@
 package config_test
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/ribice/gorsk/cmd/api/config"
 )
@@ -31,15 +32,15 @@ func TestLoad(t *testing.T) {
 			name: "Success",
 			args: args{configName: "testdata"},
 			wantData: &config.Configuration{
-				DB: &config.DBConfig{
+				DB: &config.Database{
 					Log:          true,
 					CreateSchema: false,
 				},
-				Server: &config.ServerConfig{
+				Server: &config.Server{
 					Port: 8080,
 				},
-				JWT: &config.JWTConfig{
-					Timeout: 10800,
+				JWT: &config.JWT{
+					Duration: 10800,
 				},
 			},
 		},
@@ -47,12 +48,8 @@ func TestLoad(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg, err := config.Load(tt.args.configName)
-			if !reflect.DeepEqual(tt.wantData, cfg) {
-				t.Errorf("Expected and returned data does not match")
-			}
-			if tt.wantErr != (err != nil) {
-				t.Errorf("Want err differs from err!=nil: %s", err)
-			}
+			assert.Equal(t, tt.wantData, cfg)
+			assert.Equal(t, tt.wantErr, err != nil)
 		})
 	}
 }

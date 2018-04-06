@@ -2,6 +2,7 @@ package mw
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ribice/gorsk/internal/errors"
@@ -15,12 +16,12 @@ import (
 )
 
 // NewJWT generates new JWT variable necessery for auth middleware
-func NewJWT(c *config.JWTConfig) *JWT {
+func NewJWT(c *config.JWT) *JWT {
 	return &JWT{
-		Realm:   c.Realm,
-		Key:     []byte(c.Secret),
-		Timeout: time.Duration(c.Timeout) * time.Minute,
-		Algo:    c.SigningAlgorithm,
+		Realm:    c.Realm,
+		Key:      []byte(c.Secret),
+		Duration: time.Duration(c.Duration) * time.Minute,
+		Algo:     c.SigningAlgorithm,
 	}
 }
 
@@ -33,7 +34,7 @@ type JWT struct {
 	Key []byte
 
 	// Duration for which the jwt token is valid.
-	Timeout time.Duration
+	Duration time.Duration
 
 	// JWT signing algorithm
 	Algo string
@@ -44,7 +45,7 @@ func (j *JWT) MWFunc() gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 		token, err := j.ParseToken(c)
-		if err != nil {
+		if err != nil || !token.Valid {
 			c.Header("WWW-Authenticate", "JWT realm="+j.Realm)
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
@@ -53,16 +54,16 @@ func (j *JWT) MWFunc() gin.HandlerFunc {
 		claims := token.Claims.(jwt.MapClaims)
 
 		id := int(claims["id"].(float64))
-		companyID := int(claims["company_id"].(float64))
-		locationID := int(claims["location_id"].(float64))
-		username := claims["user"].(string)
-		email := claims["email"].(string)
-		role := int8(claims["role"].(float64))
+		companyID := int(claims["c"].(float64))
+		locationID := int(claims["l"].(float64))
+		username := claims["u"].(string)
+		email := claims["e"].(string)
+		role := int8(claims["r"].(float64))
 
 		c.Set("id", id)
 		c.Set("company_id", companyID)
 		c.Set("location_id", locationID)
-		c.Set("user", username)
+		c.Set("username", username)
 		c.Set("email", email)
 		c.Set("role", role)
 
@@ -75,31 +76,36 @@ func (j *JWT) ParseToken(c *gin.Context) (*jwt.Token, error) {
 
 	token := c.Request.Header.Get("Authorization")
 	if token == "" {
-		return nil, apperr.Generic
+		return nil, apperr.Unauthorized
 	}
-	return jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
+	parts := strings.SplitN(token, " ", 2)
+	if !(len(parts) == 2 && parts[0] == "Bearer") {
+		return nil, apperr.Unauthorized
+	}
+
+	return jwt.Parse(parts[1], func(token *jwt.Token) (interface{}, error) {
 		if jwt.GetSigningMethod(j.Algo) != token.Method {
 			return nil, apperr.Generic
 		}
 		return j.Key, nil
 	})
+
 }
 
 // GenerateToken generates new JWT token and populates it with user data
-func (j *JWT) GenerateToken(u *model.User) (string, time.Time, error) {
+func (j *JWT) GenerateToken(u *model.User) (string, string, error) {
 	token := jwt.New(jwt.GetSigningMethod(j.Algo))
 	claims := token.Claims.(jwt.MapClaims)
 
-	expire := time.Now().Add(j.Timeout)
+	expire := time.Now().Add(j.Duration)
 	claims["id"] = u.ID
-	claims["user"] = u.Username
-	claims["email"] = u.Email
-	claims["role"] = u.Role.AccessLevel
-	claims["company_id"] = u.CompanyID
-	claims["location_id"] = u.LocationID
+	claims["u"] = u.Username
+	claims["e"] = u.Email
+	claims["r"] = u.Role.AccessLevel
+	claims["c"] = u.CompanyID
+	claims["l"] = u.LocationID
 	claims["exp"] = expire.Unix()
-	claims["orig_iat"] = time.Now().Unix()
 
 	tokenString, err := token.SignedString(j.Key)
-	return tokenString, expire, err
+	return tokenString, expire.Format(time.RFC3339), err
 }

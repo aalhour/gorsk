@@ -35,7 +35,6 @@ package main
 import (
 	"io/ioutil"
 	"log"
-	"net/http"
 
 	"github.com/gin-contrib/cors"
 
@@ -46,6 +45,7 @@ import (
 	"github.com/ribice/gorsk/cmd/api/config"
 	"github.com/ribice/gorsk/cmd/api/mw"
 	"github.com/ribice/gorsk/cmd/api/service"
+	_ "github.com/ribice/gorsk/cmd/api/swagger"
 	"github.com/ribice/gorsk/internal/account"
 	"github.com/ribice/gorsk/internal/auth"
 	"github.com/ribice/gorsk/internal/rbac"
@@ -56,7 +56,7 @@ import (
 func main() {
 
 	r := gin.Default()
-	mw.Add(r, cors.Default())
+	mw.Add(r, cors.Default(), mw.SecureHeaders())
 
 	cfg, err := config.Load("dev")
 	checkErr(err)
@@ -86,13 +86,13 @@ func addV1Services(cfg *config.Configuration, r *gin.Engine, db *pg.DB, log *zap
 	accDB := pgsql.NewAccountDB(db, log)
 	service.NewAccount(account.New(accDB, userDB, rbacSvc), v1Router)
 
-	service.NewUser(user.New(userDB, rbacSvc, *authSvc), v1Router)
+	service.NewUser(user.New(userDB, rbacSvc, authSvc), v1Router)
 }
 
 func docHandler(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 	data, _ := ioutil.ReadFile("swagger.json")
-	c.JSON(http.StatusOK, data)
+	c.Writer.Write(data)
 }
 
 func checkErr(err error) {

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/ribice/gorsk/internal"
 
 	"github.com/ribice/gorsk/cmd/api/config"
@@ -15,22 +17,18 @@ import (
 	"github.com/ribice/gorsk/cmd/api/mw"
 )
 
-func TestAdd(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	mw.Add(r, gin.Logger())
-}
-
 func hwHandler(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"text": "Hello World.",
 	})
 }
 
-func ginHandler(jwt *mw.JWT) *gin.Engine {
+func ginHandler(mw ...gin.HandlerFunc) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(jwt.MWFunc())
+	for _, v := range mw {
+		r.Use(v)
+	}
 	r.GET("/hello", hwHandler)
 	return r
 }
@@ -46,6 +44,11 @@ func TestMWFunc(t *testing.T) {
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
+			name:       "Header not containing Bearer",
+			header:     "notBearer",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
 			name:       "Invalid header",
 			header:     mock.HeaderInvalid(),
 			wantStatus: http.StatusUnauthorized,
@@ -56,8 +59,9 @@ func TestMWFunc(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 	}
-	jwtCfg := &config.JWTConfig{Realm: "testRealm", Secret: "jwtsecret", Timeout: 60, SigningAlgorithm: "HS256"}
-	ts := httptest.NewServer(ginHandler(mw.NewJWT(jwtCfg)))
+	jwtCfg := &config.JWT{Realm: "testRealm", Secret: "jwtsecret", Duration: 60, SigningAlgorithm: "HS256"}
+	jwtMW := mw.NewJWT(jwtCfg)
+	ts := httptest.NewServer(ginHandler(jwtMW.MWFunc()))
 	defer ts.Close()
 	path := ts.URL + "/hello"
 	client := &http.Client{}
@@ -68,12 +72,9 @@ func TestMWFunc(t *testing.T) {
 			req.Header.Set("Authorization", tt.header)
 			res, err := client.Do(req)
 			if err != nil {
-				t.Fatal("Failed creating request")
+				t.Fatal("Cannot create http request")
 			}
-			defer res.Body.Close()
-			if res.StatusCode != tt.wantStatus {
-				t.Errorf("expected status %v; got %v", tt.wantStatus, res.StatusCode)
-			}
+			assert.Equal(t, tt.wantStatus, res.StatusCode)
 		})
 	}
 }
@@ -101,19 +102,14 @@ func TestGenerateToken(t *testing.T) {
 			wantToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
 		},
 	}
-	jwtCfg := &config.JWTConfig{Realm: "testRealm", Secret: "jwtsecret", Timeout: 60, SigningAlgorithm: "HS256"}
+	jwtCfg := &config.JWT{Realm: "testRealm", Secret: "jwtsecret", Duration: 60, SigningAlgorithm: "HS256"}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			jwt := mw.NewJWT(jwtCfg)
 			str, _, err := jwt.GenerateToken(tt.req)
-			if err != nil {
-				t.Error("Didn't expect error but received one.")
-			}
-			if strings.Split(str, ".")[0] != tt.wantToken {
-				t.Error("Expected and received token do not match.")
-			}
-
+			assert.Nil(t, err)
+			assert.Equal(t, tt.wantToken, strings.Split(str, ".")[0])
 		})
 	}
 }
