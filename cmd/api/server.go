@@ -8,11 +8,10 @@
 //
 // 	 Terms Of Service:  N/A
 //     Schemes: http
-//     BasePath: /v1
 //     Version: 1.0.0
 //     License: MIT http://opensource.org/licenses/MIT
 //     Contact: Emir Ribic <ribice@gmail.com> https://ribice.ba
-//     Host: localhost:8001
+//     Host: localhost:8080
 //
 //     Consumes:
 //     - application/json
@@ -35,6 +34,7 @@ package main
 import (
 	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/gin-contrib/cors"
 
@@ -56,7 +56,13 @@ import (
 func main() {
 
 	r := gin.Default()
-	mw.Add(r, cors.Default(), mw.SecureHeaders())
+	mw.Add(r, cors.New(cors.Config{
+		AllowAllOrigins:  true,
+		AllowMethods:     []string{"GET", "POST", "PUT", "HEAD", "PATCH", "DELETE"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}), mw.SecureHeaders())
 
 	cfg, err := config.Load("dev")
 	checkErr(err)
@@ -91,7 +97,7 @@ func addV1Services(cfg *config.Configuration, r *gin.Engine, db *pg.DB, log *zap
 
 func docHandler(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
-	data, _ := ioutil.ReadFile("swagger.json")
+	data, _ := ioutil.ReadFile("./cmd/api/swagger.json")
 	c.Writer.Write(data)
 }
 
